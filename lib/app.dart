@@ -74,10 +74,25 @@ class GlassSplash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: AppColors.voidBlack,
       body: Center(
-        child: CircularProgressIndicator(color: AppColors.cyan),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.asset(
+                AppConstants.logoAsset,
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 28),
+            const CircularProgressIndicator(color: AppColors.cyan),
+          ],
+        ),
       ),
     );
   }

@@ -54,7 +54,9 @@ class OnboardingScreen extends StatelessWidget {
                           AppColors.cyanDim.withValues(alpha: 0.15),
                         ],
                       ),
-                      border: Border.all(color: AppColors.cyan.withValues(alpha: 0.5)),
+                      border: Border.all(
+                        color: AppColors.cyan.withValues(alpha: 0.5),
+                      ),
                     ),
                     child: const Icon(
                       Icons.developer_mode_rounded,
