@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Developer Control</string>
+    <string name="lock_widget_label">Tap to Lock</string>
+    <string name="lock_widget_description">One tap to lock your phone from the home screen</string>
+    <string name="lock_device_admin_label">Tap to Lock</string>
+    <string name="lock_device_admin_description">Allow locking the screen from the home widget</string>
+</resources>

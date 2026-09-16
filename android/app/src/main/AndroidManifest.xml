@@ -10,6 +10,10 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"
+        tools:ignore="ExactAlarm" />
 
     <application
         android:label="Developer Control"
@@ -47,6 +51,51 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="true" />
         </service>
+
+        <!-- Home screen Tap to Lock widget (works with app killed) -->
+        <receiver
+            android:name=".LockScreenWidgetProvider"
+            android:label="@string/lock_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.ahmadjamil.developercontrol.ACTION_LOCK_SCREEN" />
+                <action android:name="com.ahmadjamil.developercontrol.ACTION_WIDGET_PINNED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lock_screen_widget_info" />
+        </receiver>
+
+        <!-- Lock via DevicePolicyManager.lockNow() — no Accessibility floating button -->
+        <receiver
+            android:name=".LockDeviceAdminReceiver"
+            android:label="@string/lock_device_admin_label"
+            android:description="@string/lock_device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Daily Dev Mode on/off schedule (local AlarmManager) -->
+        <receiver
+            android:name=".DevModeScheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ahmadjamil.developercontrol.ACTION_SCHEDULE_TURN_ON" />
+                <action android:name="com.ahmadjamil.developercontrol.ACTION_SCHEDULE_TURN_OFF" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <meta-data
             android:name="flutterEmbedding"

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import 'controllers/app_controller.dart';
 import 'controllers/developer_settings_controller.dart';
+import 'controllers/lock_widget_controller.dart';
 import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_colors.dart';
+import 'data/services/lock_widget_service.dart';
 import 'data/services/preferences_service.dart';
 import 'data/services/secure_settings_service.dart';
 import 'features/dashboard/dashboard_screen.dart';
@@ -21,6 +22,9 @@ class DeveloperControlApp extends StatelessWidget {
         Provider<SecureSettingsService>(
           create: (_) => SecureSettingsService(),
         ),
+        Provider<LockWidgetService>(
+          create: (_) => LockWidgetService(),
+        ),
         Provider<PreferencesService>(
           create: (_) => PreferencesService(),
         ),
@@ -33,6 +37,12 @@ class DeveloperControlApp extends StatelessWidget {
         ChangeNotifierProvider<DeveloperSettingsController>(
           create: (context) => DeveloperSettingsController(
             settings: context.read<SecureSettingsService>(),
+            prefs: context.read<PreferencesService>(),
+          ),
+        ),
+        ChangeNotifierProvider<LockWidgetController>(
+          create: (context) => LockWidgetController(
+            lockWidget: context.read<LockWidgetService>(),
             prefs: context.read<PreferencesService>(),
           ),
         ),

@@ -24,6 +24,8 @@ On stock Android, turning developer features on usually means digging through Se
 | **USB Debugging** | Toggle `adb` access instantly (when permitted) |
 | **Combined mode** | Optional single switch that controls both at once |
 | **Quick Settings tile** | Add a **Dev Mode** tile next to Wi‑Fi / Bluetooth |
+| **Auto schedule** | Local daily window that turns Dev Mode on/off (manual override still works until the next alarm) |
+| **Tap to Lock widget** | Transparent home-screen lock icon — tap to lock instantly (works with the app closed) |
 | **Fallback shortcuts** | Without elevated permission, opens the exact Settings pages you need |
 
 ---
@@ -36,7 +38,7 @@ First launch explains how to unlock seamless 1-click control and shows the one-t
 <img src="assets/screenshots/readme_1.png" alt="Onboarding — ADB permission setup" width="320" />
 
 ### Dashboard
-Live status for Developer Options and USB Debugging, plus options to combine toggles or add a Quick Settings tile.
+Live status for Developer Options and USB Debugging, plus options to combine toggles, add a Quick Settings tile, or enable the Tap to Lock home widget.
 
 <img src="assets/screenshots/readme_2.png" alt="Dashboard — toggles and options" width="320" />
 
@@ -102,7 +104,20 @@ adb shell pm revoke com.ahmadjamil.developercontrol android.permission.WRITE_SEC
 - **Quick Settings tile (“Dev Mode”)** — Toggle both from the notification shade  
   - Android 13+: use **Quick Settings tile** in the app to prompt adding it  
   - Older Android: swipe down → edit tiles → add **Dev Mode**
-- **Provider architecture** — Controllers for app/bootstrap and developer settings
+- **Auto schedule** — Local daily on/off window for Developer Options + USB Debugging:
+  1. Flip **Auto schedule** ON (needs ADB `WRITE_SECURE_SETTINGS` grant)  
+  2. Set **Turn on at** / **Turn off at** (overnight windows like 22:00 → 08:00 work)  
+  3. Alarms run on-device via `AlarmManager` — no cloud  
+  4. You can still flip Dev Mode anytime from the app or Quick Settings tile; your choice sticks until the **next** scheduled on/off  
+  5. Survives reboot (alarms are re-armed on boot)
+- **Tap to Lock home widget** — One dashboard switch to set everything up:
+  1. Flip **Tap to Lock widget** ON  
+  2. Tap **Activate** on the Device Admin screen  
+  3. Confirm the system prompt to place the transparent lock icon on your home screen  
+  4. Tap the grey lock icon anytime to lock the phone — even when the app is killed  
+  - Uses `DevicePolicyManager.lockNow()` from a native `AppWidgetProvider` (no Flutter UI launched)  
+  - If your launcher does not support pin prompts: long-press home → Widgets → **Tap to Lock**
+- **Provider architecture** — Controllers for app/bootstrap, developer settings, and lock widget
 
 ---
 
@@ -115,6 +130,7 @@ lib/
   controllers/
     app_controller.dart                 # Onboarding / navigation
     developer_settings_controller.dart  # Toggles & preferences
+    lock_widget_controller.dart         # Tap to Lock toggle flow
   core/
     constants/
     theme/
@@ -125,9 +141,14 @@ lib/
   features/
     onboarding/
     dashboard/
-android/.../MainActivity.kt             # Settings.Global + QS tile bridge
-android/.../DeveloperModeTileService.kt # Quick Settings tile
-assets/screenshots/                     # README screenshots
+android/.../MainActivity.kt               # Settings.Global + QS tile + Tap to Lock + schedule bridge
+android/.../DeveloperModeTileService.kt   # Quick Settings tile
+android/.../DevModeScheduleHelper.kt      # Local AlarmManager on/off window
+android/.../DevModeScheduleReceiver.kt    # Schedule + boot alarms
+android/.../LockHelper.kt                 # Device Admin + pin widget helpers
+android/.../LockScreenWidgetProvider.kt   # Home widget → lock (no Flutter)
+android/.../LockDeviceAdminReceiver.kt    # Device Admin for lockNow()
+assets/screenshots/                       # README screenshots
 ```
 
 ---
@@ -137,7 +158,8 @@ assets/screenshots/                     # README screenshots
 - **Flutter** + **Dart**
 - **Provider** for state management
 - **shared_preferences** for onboarding / UI prefs
-- **Kotlin** platform channel for `Settings.Global` and Quick Settings
+- **Kotlin** platform channel for `Settings.Global`, Quick Settings, and Tap to Lock
+- **Device Admin** (`force-lock`) for locking from the home widget
 
 ---
 
@@ -159,8 +181,10 @@ build/app/outputs/flutter-apk/app-release.apk
 
 - The app only reads/writes the developer-related secure settings it needs
 - `WRITE_SECURE_SETTINGS` is a protected permission — grant it only to apps you trust
+- **Tap to Lock** uses Device Admin only to call `lockNow()` — it does not wipe data or change other device policies
+- No Accessibility overlay / floating button
 - No root required
-- Not intended for Google Play distribution while relying on this privileged permission (sideload / self-use)
+- Not intended for Google Play distribution while relying on privileged permissions (sideload / self-use)
 
 ---
 
