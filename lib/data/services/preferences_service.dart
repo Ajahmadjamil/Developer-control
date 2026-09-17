@@ -10,6 +10,7 @@ class PreferencesService {
   static const _scheduleEnabledKey = 'dev_schedule_enabled';
   static const _scheduleStartKey = 'dev_schedule_start_minutes';
   static const _scheduleEndKey = 'dev_schedule_end_minutes';
+  static const _bankingPackagesKey = 'banking_guard_packages';
 
   Future<bool> isOnboardingCompleted() async {
     final prefs = await SharedPreferences.getInstance();
@@ -65,5 +66,15 @@ class PreferencesService {
     await prefs.setBool(_scheduleEnabledKey, enabled);
     await prefs.setInt(_scheduleStartKey, startMinutes);
     await prefs.setInt(_scheduleEndKey, endMinutes);
+  }
+
+  Future<List<String>> getBankingPackages() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_bankingPackagesKey) ?? const [];
+  }
+
+  Future<void> setBankingPackages(List<String> packages) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_bankingPackagesKey, packages);
   }
 }

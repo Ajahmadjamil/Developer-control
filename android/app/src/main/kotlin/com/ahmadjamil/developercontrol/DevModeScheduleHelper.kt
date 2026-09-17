@@ -127,6 +127,19 @@ object DevModeScheduleHelper {
             return
         }
 
+        // Don't force Dev Mode ON while a banking app is in the foreground.
+        if (turnOn && BankingGuardStore.isCurrentlyInBank(context)) {
+            Log.i(TAG, "Scheduled ON skipped — banking app is open")
+            scheduleNextAlarms(context)
+            return
+        }
+
+        // If schedule turns OFF during a bank session, don't restore ON on exit.
+        if (!turnOn && BankingGuardStore.isCurrentlyInBank(context)) {
+            val pkg = BankingGuardStore.activeBankPackage(context) ?: ""
+            BankingGuardStore.markEnteredBank(context, pkg, wasOn = false)
+        }
+
         SecureSettingsHelper.setDeveloperModeEnabled(context, turnOn)
         refreshTile(context)
         scheduleNextAlarms(context)

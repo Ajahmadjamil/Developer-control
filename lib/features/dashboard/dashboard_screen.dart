@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../controllers/app_controller.dart';
+import '../../../controllers/banking_guard_controller.dart';
 import '../../../controllers/developer_settings_controller.dart';
 import '../../../controllers/lock_widget_controller.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/glass_panel.dart';
+import '../banking_guard/banking_app_picker_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,6 +26,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DeveloperSettingsController>().init();
       context.read<LockWidgetController>().init();
+      context.read<BankingGuardController>().init();
     });
   }
 
@@ -38,6 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (state == AppLifecycleState.resumed) {
       context.read<DeveloperSettingsController>().refreshStatus();
       context.read<LockWidgetController>().refreshStatus();
+      context.read<BankingGuardController>().refresh();
     }
   }
 
@@ -92,11 +96,13 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<DeveloperSettingsController, LockWidgetController>(
-      builder: (context, controller, lock, _) {
+    return Consumer3<DeveloperSettingsController, LockWidgetController,
+        BankingGuardController>(
+      builder: (context, controller, lock, banking, _) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showMessage(controller.message, controller.clearMessage);
           _showMessage(lock.message, lock.clearMessage);
+          _showMessage(banking.message, banking.clearMessage);
         });
 
         final scheduleOn = controller.schedule.enabled;
@@ -351,8 +357,84 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
 
-                        if (controller.busy || lock.busy) ...[
+                        // ═══ FEATURE 3: Banking Guard (separate) ═══
+                        _FeatureShell(
+                          icon: Icons.account_balance_rounded,
+                          title: 'Banking Guard',
+                          blurb:
+                              'When you open a selected banking app, Dev Mode turns OFF. '
+                              'When you leave it, Dev Mode turns back ON if it was on before '
+                              '(manual or schedule).',
+                          statusLabel: banking.enabled
+                              ? (banking.status.inBank
+                                  ? 'BANK OPEN · DEV OFF'
+                                  : 'WATCHING')
+                              : 'OFF',
+                          statusActive: banking.enabled,
+                          highlighted: banking.enabled,
+                          children: [
+                            _InsetBox(
+                              child: Column(
+                                children: [
+                                  _SwitchLine(
+                                    title: 'Auto-off for banking apps',
+                                    subtitle: banking.hasUsageAccess
+                                        ? '${banking.packages.length} app(s) selected'
+                                        : 'Needs Usage Access permission',
+                                    value: banking.enabled,
+                                    onChanged: banking.busy
+                                        ? null
+                                        : banking.setEnabled,
+                                  ),
+                                  const _Hairline(),
+                                  _LinkLine(
+                                    title: banking.hasUsageAccess
+                                        ? 'Usage Access granted'
+                                        : 'Allow Usage Access',
+                                    subtitle: banking.hasUsageAccess
+                                        ? 'Required to see which app is open'
+                                        : 'Open system settings and enable Developer Control',
+                                    onTap: banking.busy
+                                        ? null
+                                        : banking.openUsageAccess,
+                                  ),
+                                  const _Hairline(),
+                                  _LinkLine(
+                                    title: 'Choose banking apps',
+                                    subtitle: banking.packages.isEmpty
+                                        ? 'Pick JazzCash, Easypaisa, HBL, etc.'
+                                        : '${banking.packages.length} selected',
+                                    onTap: banking.busy
+                                        ? null
+                                        : () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute<void>(
+                                                builder: (_) =>
+                                                    const BankingAppPickerScreen(),
+                                              ),
+                                            );
+                                          },
+                                  ),
+                                  const Padding(
+                                    padding: EdgeInsets.only(
+                                      left: 4,
+                                      right: 4,
+                                      bottom: 10,
+                                      top: 4,
+                                    ),
+                                    child: _SoftTip(
+                                      'Shows a quiet “Banking Guard” notification while watching. No Accessibility service.',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (controller.busy || lock.busy || banking.busy) ...[
                           const SizedBox(height: 28),
                           const Center(
                             child: SizedBox(
@@ -882,7 +964,7 @@ class _HeroHeader extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             hasPermission
-                ? 'Two features below: Developer Mode (toggle, schedule, shade tile) and Tap to Lock.'
+                ? 'Features below: Developer Mode, Tap to Lock, and Banking Guard.'
                 : 'Without the ADB grant, Developer Mode opens Settings pages instead of switching instantly.',
             style: const TextStyle(
               color: AppColors.textPrimary,

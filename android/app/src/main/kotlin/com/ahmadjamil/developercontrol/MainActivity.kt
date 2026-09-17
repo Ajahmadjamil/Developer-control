@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "com.ahmadjamil.developercontrol/secure_settings"
         private const val TAG = "DeveloperControl"
         private const val REQUEST_DEVICE_ADMIN = 1001
+        private const val REQUEST_POST_NOTIFICATIONS = 1002
         private const val PIN_DELAY_MS = 450L
     }
 
@@ -115,6 +116,45 @@ class MainActivity : FlutterActivity() {
                             )
                             refreshQuickSettingsTile()
                             result.success(out)
+                        }
+                        // Banking Guard (separate feature)
+                        "getBankingGuard" -> {
+                            result.success(BankingGuardService.status(this))
+                        }
+                        "setBankingGuardEnabled" -> {
+                            val enabled = call.argument<Boolean>("enabled") ?: false
+                            if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    requestPermissions(
+                                        arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                        REQUEST_POST_NOTIFICATIONS,
+                                    )
+                                }
+                            }
+                            val out = BankingGuardService.syncEnabled(this, enabled)
+                            if (out["needsUsageAccess"] == true) {
+                                BankingGuardService.openUsageAccessSettings(this)
+                            }
+                            refreshQuickSettingsTile()
+                            result.success(out)
+                        }
+                        "setBankingGuardPackages" -> {
+                            val list = call.argument<List<String>>("packages") ?: emptyList()
+                            BankingGuardStore.setPackages(this, list.toSet())
+                            // Keep service running if already enabled.
+                            if (BankingGuardStore.isEnabled(this)) {
+                                BankingGuardService.start(this)
+                            }
+                            result.success(BankingGuardService.status(this))
+                        }
+                        "openUsageAccessSettings" -> {
+                            BankingGuardService.openUsageAccessSettings(this)
+                            result.success(true)
+                        }
+                        "listLaunchableApps" -> {
+                            result.success(BankingGuardService.listLaunchableApps(this))
                         }
                         else -> result.notImplemented()
                     }
