@@ -49,6 +49,9 @@ class MainActivity : FlutterActivity() {
                         "isUsbDebuggingEnabled" -> {
                             result.success(SecureSettingsHelper.isUsbDebuggingEnabled(this))
                         }
+                        "getDeveloperModeState" -> {
+                            result.success(SecureSettingsHelper.getDeveloperModeState(this))
+                        }
                         "setDeveloperOptionsEnabled" -> {
                             val enabled = call.argument<Boolean>("enabled") ?: true
                             val ok = SecureSettingsHelper.setDeveloperOptionsEnabled(this, enabled)

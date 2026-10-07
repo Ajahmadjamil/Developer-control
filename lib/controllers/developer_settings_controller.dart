@@ -16,6 +16,8 @@ class DeveloperSettingsController extends ChangeNotifier {
   final SecureSettingsService _settings;
   final PreferencesService _prefs;
 
+  static const _settleDelay = Duration(milliseconds: 500);
+
   bool _loading = true;
   bool _busy = false;
   bool _hasSecurePermission = false;
@@ -59,13 +61,12 @@ class DeveloperSettingsController extends ChangeNotifier {
 
   Future<void> refreshStatus() async {
     final hasPerm = await _settings.hasWriteSecureSettings();
-    final devOpts = await _settings.isDeveloperOptionsEnabled();
-    final adb = await _settings.isUsbDebuggingEnabled();
+    final state = await _settings.getDeveloperModeState();
     final nativeSchedule = await _settings.getDevModeSchedule();
 
     _hasSecurePermission = hasPerm;
-    _developerOptionsEnabled = devOpts;
-    _usbDebuggingEnabled = adb;
+    _developerOptionsEnabled = state.developerOptions;
+    _usbDebuggingEnabled = state.usbDebugging;
     _schedule = nativeSchedule;
     _loading = false;
     notifyListeners();
@@ -189,23 +190,26 @@ class DeveloperSettingsController extends ChangeNotifier {
       final hasPerm = await _settings.hasWriteSecureSettings();
 
       if (hasPerm) {
+        _showPending(developerOptions: enabled, usbDebugging: enabled);
         if (enabled) {
-          final ok = await _settings.setDeveloperOptionsEnabled(enabled: true) &&
-              await _settings.setUsbDebuggingEnabled(enabled: true);
-          if (ok) {
-            await refreshStatus();
-            _emit('Developer Options + USB Debugging turned ON');
-            return;
-          }
+          await _settings.setDeveloperOptionsEnabled(enabled: true);
+          await _settings.setUsbDebuggingEnabled(enabled: true);
         } else {
-          final ok = await _settings.setUsbDebuggingEnabled(enabled: false) &&
-              await _settings.setDeveloperOptionsEnabled(enabled: false);
-          if (ok) {
-            await refreshStatus();
-            _emit('Developer Options + USB Debugging turned OFF');
-            return;
-          }
+          await _settings.setUsbDebuggingEnabled(enabled: false);
+          await _settings.setDeveloperOptionsEnabled(enabled: false);
         }
+        await _settleAndRefresh();
+        if (_developerOptionsEnabled == enabled &&
+            _usbDebuggingEnabled == enabled) {
+          _emit(
+            enabled
+                ? 'Developer Options + USB Debugging turned ON'
+                : 'Developer Options + USB Debugging turned OFF',
+          );
+        } else {
+          _reportBlocked('Developer Mode');
+        }
+        return;
       }
 
       if (enabled) {
@@ -235,20 +239,27 @@ class DeveloperSettingsController extends ChangeNotifier {
       final hasPerm = await _settings.hasWriteSecureSettings();
 
       if (hasPerm) {
-        if (!enabled && _usbDebuggingEnabled) {
+        final usbWasOn = _usbDebuggingEnabled;
+        // Turning Developer Options off also turns USB Debugging off.
+        _showPending(
+          developerOptions: enabled,
+          usbDebugging: enabled ? null : false,
+        );
+        if (!enabled && usbWasOn) {
           await _settings.setUsbDebuggingEnabled(enabled: false);
         }
-        final ok =
-            await _settings.setDeveloperOptionsEnabled(enabled: enabled);
-        if (ok) {
-          await refreshStatus();
+        await _settings.setDeveloperOptionsEnabled(enabled: enabled);
+        await _settleAndRefresh();
+        if (_developerOptionsEnabled == enabled) {
           _emit(
             enabled
                 ? 'Developer Options turned ON'
                 : 'Developer Options turned OFF',
           );
-          return;
+        } else {
+          _reportBlocked('Developer Options');
         }
+        return;
       }
 
       if (enabled) {
@@ -273,16 +284,23 @@ class DeveloperSettingsController extends ChangeNotifier {
       final hasPerm = await _settings.hasWriteSecureSettings();
 
       if (hasPerm) {
-        final ok = await _settings.setUsbDebuggingEnabled(enabled: enabled);
-        if (ok) {
-          await refreshStatus();
+        // Turning USB Debugging on also turns Developer Options on.
+        _showPending(
+          developerOptions: enabled ? true : null,
+          usbDebugging: enabled,
+        );
+        await _settings.setUsbDebuggingEnabled(enabled: enabled);
+        await _settleAndRefresh();
+        if (_usbDebuggingEnabled == enabled) {
           _emit(
             enabled
                 ? 'USB Debugging turned ON'
                 : 'USB Debugging turned OFF',
           );
-          return;
+        } else {
+          _reportBlocked('USB Debugging');
         }
+        return;
       }
 
       if (!_developerOptionsEnabled) {
@@ -303,6 +321,27 @@ class DeveloperSettingsController extends ChangeNotifier {
 
   void clearMessage() {
     _message = null;
+  }
+
+  /// Flips the switches immediately; [refreshStatus] later shows what stuck.
+  void _showPending({bool? developerOptions, bool? usbDebugging}) {
+    _developerOptionsEnabled = developerOptions ?? _developerOptionsEnabled;
+    _usbDebuggingEnabled = usbDebugging ?? _usbDebuggingEnabled;
+    notifyListeners();
+  }
+
+  /// Re-reads after a short pause — some ROMs accept the write and then
+  /// flip the setting straight back.
+  Future<void> _settleAndRefresh() async {
+    await Future<void>.delayed(_settleDelay);
+    await refreshStatus();
+  }
+
+  /// The phone refused the write (Samsung Auto Blocker, MIUI/HyperOS,
+  /// ColorOS guards, work-profile restrictions). The switch already shows
+  /// the real state again via [refreshStatus].
+  void _reportBlocked(String what) {
+    _emit('Android did not accept the $what change on this phone');
   }
 
   void _emit(String message) {

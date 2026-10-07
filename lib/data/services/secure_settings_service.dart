@@ -25,22 +25,20 @@ class SecureSettingsService {
     }
   }
 
-  Future<bool> isDeveloperOptionsEnabled() async {
+  /// Both states in one native call (Android 17+ derives them, see
+  /// SecureSettingsHelper.kt).
+  Future<({bool developerOptions, bool usbDebugging})>
+      getDeveloperModeState() async {
     try {
-      final result =
-          await _channel.invokeMethod<bool>('isDeveloperOptionsEnabled');
-      return result ?? false;
+      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'getDeveloperModeState',
+      );
+      return (
+        developerOptions: raw?['developerOptions'] as bool? ?? false,
+        usbDebugging: raw?['usbDebugging'] as bool? ?? false,
+      );
     } on PlatformException {
-      return false;
-    }
-  }
-
-  Future<bool> isUsbDebuggingEnabled() async {
-    try {
-      final result = await _channel.invokeMethod<bool>('isUsbDebuggingEnabled');
-      return result ?? false;
-    } on PlatformException {
-      return false;
+      return (developerOptions: false, usbDebugging: false);
     }
   }
 
