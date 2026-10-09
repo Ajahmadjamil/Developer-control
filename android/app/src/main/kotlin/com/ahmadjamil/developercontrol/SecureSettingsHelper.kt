@@ -3,7 +3,10 @@ package com.ahmadjamil.developercontrol
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 
@@ -13,7 +16,8 @@ import android.util.Log
  * Android 17 QPR1+ reports development_settings_enabled / adb_enabled as 0 to
  * every third-party app, whatever the real value. Writes still work, so on
  * those builds a 0 means "unknown": USB Debugging comes from system properties,
- * and anything else falls back to what this app last wrote.
+ * Developer Options from [probeDeveloperOptions] (app refresh) or what this app
+ * last wrote (tile, schedule).
  */
 object SecureSettingsHelper {
     private const val TAG = "DeveloperControl"
@@ -27,7 +31,12 @@ object SecureSettingsHelper {
     /** System properties lag a write by a few hundred ms — trust the write meanwhile. */
     private const val WRITE_GRACE_MS = 3_000L
 
+    /** Change notifications arrive in a few ms; no notification by now = no change. */
+    private const val PROBE_TIMEOUT_MS = 400L
+
     private val readsMayBeHidden = Build.VERSION.SDK_INT >= HIDDEN_READS_SDK
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val pendingProbes = mutableListOf<(Boolean) -> Unit>()
 
     fun hasWriteSecureSettings(context: Context): Boolean {
         return context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
@@ -57,13 +66,31 @@ object SecureSettingsHelper {
         return usb && resolveDeveloperOptions(context, usb)
     }
 
-    /** Both values in one pass, so system properties are only read once. */
-    fun getDeveloperModeState(context: Context): Map<String, Boolean> {
+    /**
+     * Both values in one pass. When Android hides Developer Options and USB
+     * Debugging is off (so it can't vouch for it), probes the real value first.
+     * Main thread only; [done] runs once, possibly after [PROBE_TIMEOUT_MS].
+     */
+    fun loadDeveloperModeState(context: Context, done: (Map<String, Boolean>) -> Unit) {
         val usb = isUsbDebuggingEnabled(context)
-        return mapOf(
-            "developerOptions" to resolveDeveloperOptions(context, usb),
-            "usbDebugging" to usb,
-        )
+        val needsProbe = readsMayBeHidden &&
+            !usb &&
+            hasWriteSecureSettings(context) &&
+            !inWriteGrace(context) &&
+            !isGlobalSettingEnabled(context, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED)
+
+        if (!needsProbe) {
+            done(
+                mapOf(
+                    "developerOptions" to resolveDeveloperOptions(context, usb),
+                    "usbDebugging" to usb,
+                ),
+            )
+            return
+        }
+        probeDeveloperOptions(context.applicationContext) { developerOptions ->
+            done(mapOf("developerOptions" to developerOptions, "usbDebugging" to usb))
+        }
     }
 
     fun setDeveloperOptionsEnabled(context: Context, enabled: Boolean): Boolean {
@@ -111,6 +138,56 @@ object SecureSettingsHelper {
 
     fun openDeveloperOptionsSettings(context: Context) {
         openSettingsIntent(context, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+    }
+
+    /**
+     * Android 17+ hides development_settings_enabled, but SettingsProvider still
+     * notifies observers — and only when a value really changes. So: watch,
+     * write 1. A notification means it was 0 (put the 0 back); silence means
+     * it was already 1.
+     */
+    private fun probeDeveloperOptions(context: Context, done: (Boolean) -> Unit) {
+        pendingProbes += done
+        if (pendingProbes.size > 1) return // one probe at a time; callers share the answer
+
+        val key = Settings.Global.DEVELOPMENT_SETTINGS_ENABLED
+        val resolver = context.contentResolver
+        var observer: ContentObserver? = null
+        var timeout: Runnable? = null
+
+        fun finish(enabled: Boolean, restoreOff: Boolean) {
+            val registered = observer ?: return // already finished
+            observer = null
+            resolver.unregisterContentObserver(registered)
+            timeout?.let { mainHandler.removeCallbacks(it) }
+            if (restoreOff) {
+                try {
+                    Settings.Global.putInt(resolver, key, 0)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Could not restore $key=0 after probe", e)
+                }
+            }
+            remember(context, key, enabled, stampWrite = false)
+            Log.i(TAG, "Developer Options probe: ${if (enabled) "ON" else "OFF"}")
+            val waiting = pendingProbes.toList()
+            pendingProbes.clear()
+            waiting.forEach { it(enabled) }
+        }
+
+        observer = object : ContentObserver(mainHandler) {
+            override fun onChange(selfChange: Boolean) {
+                finish(enabled = false, restoreOff = true)
+            }
+        }.also { resolver.registerContentObserver(Settings.Global.getUriFor(key), false, it) }
+        timeout = Runnable { finish(enabled = true, restoreOff = false) }
+            .also { mainHandler.postDelayed(it, PROBE_TIMEOUT_MS) }
+
+        try {
+            Settings.Global.putInt(resolver, key, 1)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Developer Options probe write failed", e)
+            finish(enabled = remembered(context, key), restoreOff = false)
+        }
     }
 
     private fun resolveDeveloperOptions(context: Context, usbDebugging: Boolean): Boolean {
